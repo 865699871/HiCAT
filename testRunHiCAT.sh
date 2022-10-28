@@ -1,0 +1,1 @@
+python HiCAT.py -i ./testdata/cen21.fa -t ./testdata/AlphaSat.fa

@@ -1,0 +1,9 @@
+biopython=1.79
+setuptools=61.2.0
+joblib=1.1.0
+numpy=1.22.3
+pandas=1.4.0
+python-levenshtein=0.12.2
+python-edlib=1.3.9
+networkx=2.7.1
+matplotlib=3.5.1
