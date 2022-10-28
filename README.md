@@ -31,6 +31,29 @@ cd ./stringdecomposer && make
 python HiCAT.py -i ./testdata/cen21.fa -t ./testdata/AlphaSat.fa
 #For more details, please use
 python HiCAT.py -h
+HiCAT: automated annotation centromere
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -i INPUT_FASTA, --input_fasta INPUT_FASTA
+                        centromere DNA sequence in fasta format
+  -t MONOMER_TEMPLATE, --monomer_template MONOMER_TEMPLATE
+                        monomer template DNA sequence in fasta format for stringdecomposer to build block
+  -o OUTPUT_DIR, --output_dir OUTPUT_DIR
+                        HiCAT output path default is ./HiCAT_out
+  -ms MIN_SIMILARITY, --min_similarity MIN_SIMILARITY
+                        The lower bound for similarity threshold which used to remove edges in block graph, default is 0.94
+  -st STEP, --step STEP
+                        The similarity threshold iteratively increases from min_similarity to nearly 1 with a specific step, default is
+                        0.005
+  -mh MAX_HOR_LEN, --max_hor_len MAX_HOR_LEN
+                        An upper bound for the length of the tandem repeat unit by default 40 monomers for improving efficiency
+  -sp SHOW_HOR_NUMBER, --show_hor_number SHOW_HOR_NUMBER
+                        Default visualized the top five HORs
+  -sn SHOW_HOR_MIN_REPEAT_NUMBER, --show_hor_min_repeat_number SHOW_HOR_MIN_REPEAT_NUMBER
+                        Default visualized the HORs with repeat numbers greater than 10
+  -th THREAD, --thread THREAD
+                        The number of threads, default is 1
 ```
 #### Conda 
 ```Bash
