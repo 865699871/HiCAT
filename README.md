@@ -58,7 +58,7 @@ optional arguments:
 #### Conda 
 ```Bash
 #install
-conda install -c shenghangao hicat
+conda install -c xjtuomics hicat
 #run
 hicat -i ./testdata/cen21.fa -t ./testdata/AlphaSat.fa
 #For more details, please use
