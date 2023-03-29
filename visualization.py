@@ -8,6 +8,13 @@ import os
 
 import pandas as pd
 
+def reverse(sequence):
+    base_map = {'A':'T','T':'A','C':'G','G':'C','N':'N'}
+    new_sequence = ''
+    for i in sequence[::-1]:
+        new_sequence += base_map[i]
+    return new_sequence
+
 def readPattern(pattern_file):
     patterns = {}
     key = ''
@@ -20,13 +27,15 @@ def readPattern(pattern_file):
             patterns[key] = []
             line = pf.readline()[:-1]
             itemsets = line.split('\t')[1:]
+            # 增加strand
             for i in itemsets:
                 r = i.split(',')
                 start = int(r[0])
                 end = int(r[1])
-                pattern = r[2]
-                repeat_number = int(r[3])
-                patterns[key].append([start,end,pattern,repeat_number])
+                strand = r[2]
+                pattern = r[3]
+                repeat_number = int(r[4])
+                patterns[key].append([start,end,strand,pattern,repeat_number])
     return patterns
 
 def readMonomerSequence(monomer_sequence_file, similarity):
@@ -56,7 +65,6 @@ def readBlockSequence(block_sequence_file):
                 strand = item[3]
                 block_sequence.append([start,end,strand])
     return block_sequence
-
 
 def readCluster(cluster_file):
     monomer_table = {}
@@ -96,10 +104,11 @@ def buildHORFile(patterns, pattern_static,base_sequence,monomer_sequence,block_s
         pattern_name = pattern_static[i][0]
         pattern = i.split('_')
         database = patterns[i]
-        # ([start,end,pattern,repeat_number])
+        # ([start,end,strand,pattern,repeat_number])
         for j in database:
             start = j[0]
             end = j[1]
+            strand = j[2] # 更新增加strand
             monomer_sequence_item = monomer_sequence[start:end+1]
             # patternname.index start end pattern repeatnumber rawpattern
             monomer_sequence_item_str = ''
@@ -108,62 +117,109 @@ def buildHORFile(patterns, pattern_static,base_sequence,monomer_sequence,block_s
             monomer_sequence_item_str = monomer_sequence_item_str[:-1]
             out_hor_raw_file.write('>' + pattern_name  + '::' +
                                        str(block_sequence[start][0]) + '-' + str(block_sequence[end][1] + 1) +
+                                   '::' + strand +
                                        ' nHOR-' + i + '::rHOR-' + monomer_sequence_item_str + '\n')
             out_hor_raw_file.write(base_sequence[block_sequence[start][0]:block_sequence[end][1] + 1] + '\n')
 
             out_hor_normal_file.write('>' + pattern_name + '::' +
                                    str(block_sequence[start][0]) + '-' + str(block_sequence[end][1] + 1) +
+                                      '::' + strand +
                                    ' nHOR-' + i + '::rHOR-' + monomer_sequence_item_str + '\n')
 
             if len(pattern) == 1:
-                out_hor_normal_file.write(base_sequence[block_sequence[start][0]:block_sequence[end][1] + 1] + '\n')
-            else:
-                # 检测标准pattern
-                double_sequence = monomer_sequence_item + monomer_sequence_item
-                double_index = list(range(len(monomer_sequence_item))) + list(range(len(monomer_sequence_item)))
-                # 搜索，向栈中加入每个起点
-                count = 0
-                prefix = []
-                pattern_index = 0
-                for k in range(len(double_sequence)):
-                    if pattern[pattern_index] == double_sequence[k]:
-                        prefix.append([k, double_sequence[k], double_index[k], pattern_index])
-                normal_pattern = []
-                for k in prefix:
-                    record = [k]
-                    pattern_index = k[3] + 1
-                    not_find = 0
-                    for l in range(k[0] + 1, len(double_sequence)):
-                        if double_sequence[l] == pattern[pattern_index]:
-                            record.append([l, double_sequence[l], double_index[l], pattern_index])
-                            pattern_index += 1
-                            if pattern_index == len(pattern):
-                                break
-                        else:
-                            continue_flag = 0
-                            for m in record:
-                                if double_sequence[l] == m[1]:
-                                    continue_flag = 1
-                            if continue_flag == 1:
-                                continue
-                            else:
-                                not_find = 1
-                                break
-                    if not_find == 1:
-                        continue
-                    if len(record) != len(pattern):
-                        continue
-                    normal_pattern = record
-                normal_sequence = ''
-                for k in normal_pattern:
-                    block_start = block_sequence[start + k[2]][0]
-                    block_end = block_sequence[start + k[2]][1]+1
-                    normal_sequence += base_sequence[block_start:block_end]
+                # 考虑反链 '-' 链标准化变正
+                normal_sequence = base_sequence[block_sequence[start][0]:block_sequence[end][1] + 1]
+                if strand == '-':
+                    normal_sequence = reverse(normal_sequence)
                 out_hor_normal_file.write(normal_sequence + '\n')
+            else:
+                if strand == '-':
+                    monomer_sequence_item = monomer_sequence_item[::-1] # 反链序列翻转
+                    double_sequence = monomer_sequence_item + monomer_sequence_item
+                    double_index = list(range(len(monomer_sequence_item)))[::-1] + \
+                                   list(range(len(monomer_sequence_item)))[::-1] # 反链index翻转
+                    count = 0
+                    prefix = []
+                    pattern_index = 0
+                    for k in range(len(double_sequence)):
+                        if pattern[pattern_index] == double_sequence[k]:
+                            prefix.append([k, double_sequence[k], double_index[k], pattern_index])
+                    normal_pattern = []
+                    for k in prefix:
+                        record = [k]
+                        pattern_index = k[3] + 1
+                        not_find = 0
+                        for l in range(k[0] + 1, len(double_sequence)):
+                            if double_sequence[l] == pattern[pattern_index]:
+                                record.append([l, double_sequence[l], double_index[l], pattern_index])
+                                pattern_index += 1
+                                if pattern_index == len(pattern):
+                                    break
+                            else:
+                                continue_flag = 0
+                                for m in record:
+                                    if double_sequence[l] == m[1]:
+                                        continue_flag = 1
+                                if continue_flag == 1:
+                                    continue
+                                else:
+                                    not_find = 1
+                                    break
+                        if not_find == 1:
+                            continue
+                        if len(record) != len(pattern):
+                            continue
+                        normal_pattern = record
+                    normal_sequence = ''
+                    for k in normal_pattern:
+                        block_start = block_sequence[start + k[2]][0]
+                        block_end = block_sequence[start + k[2]][1] + 1
+                        normal_sequence += reverse(base_sequence[block_start:block_end]) # 每个block变反
+                    out_hor_normal_file.write(normal_sequence + '\n')
+                else:
+                    # +
+                    double_sequence = monomer_sequence_item + monomer_sequence_item
+                    double_index = list(range(len(monomer_sequence_item))) + list(range(len(monomer_sequence_item)))
+                    count = 0
+                    prefix = []
+                    pattern_index = 0
+                    for k in range(len(double_sequence)):
+                        if pattern[pattern_index] == double_sequence[k]:
+                            prefix.append([k, double_sequence[k], double_index[k], pattern_index])
+                    normal_pattern = []
+                    for k in prefix:
+                        record = [k]
+                        pattern_index = k[3] + 1
+                        not_find = 0
+                        for l in range(k[0] + 1, len(double_sequence)):
+                            if double_sequence[l] == pattern[pattern_index]:
+                                record.append([l, double_sequence[l], double_index[l], pattern_index])
+                                pattern_index += 1
+                                if pattern_index == len(pattern):
+                                    break
+                            else:
+                                continue_flag = 0
+                                for m in record:
+                                    if double_sequence[l] == m[1]:
+                                        continue_flag = 1
+                                if continue_flag == 1:
+                                    continue
+                                else:
+                                    not_find = 1
+                                    break
+                        if not_find == 1:
+                            continue
+                        if len(record) != len(pattern):
+                            continue
+                        normal_pattern = record
+                    normal_sequence = ''
+                    for k in normal_pattern:
+                        block_start = block_sequence[start + k[2]][0]
+                        block_end = block_sequence[start + k[2]][1]+1
+                        normal_sequence += base_sequence[block_start:block_end]
+                    out_hor_normal_file.write(normal_sequence + '\n')
     out_hor_raw_file.close()
     out_hor_normal_file.close()
-
-
 
 def Plot(monomer_sequence, patterns,pattern_static, block_seuqence, outdir, show_number = 5, show_min_repeat_number = 10):
     fig, ax = plt.subplots(figsize=(10, 10))
@@ -225,8 +281,6 @@ def Plot(monomer_sequence, patterns,pattern_static, block_seuqence, outdir, show
     plt.savefig(outdir + '/plot_pattern.pdf')
     plt.close()
 
-
-    # 统计每个内部常规HOR和嵌套数量
     x = np.arange(min(len(filter_patterns.keys()),show_number))
     y = []
     y1 = []
@@ -241,14 +295,14 @@ def Plot(monomer_sequence, patterns,pattern_static, block_seuqence, outdir, show
         nested = 0
         for j in database:
             item_len = int(j[1]) + 1 - int(j[0])
-            if item_len == len(pattern) * j[3]:
-                canonical += j[3]
+            if item_len == len(pattern) * j[4]:
+                canonical += j[4]
             else:
-                nested += j[3]
+                nested += j[4]
         y.append(canonical)
         y1.append(nested)
         tick_label.append(pattern_static[i][0])
-    # 输出
+
     pattern_static_file = outdir + '/pattern_static.xls'
     pattern_static_file = open(pattern_static_file,'w')
     pattern_static_file.write('HORs\tCanonical\tNested\n')
@@ -300,40 +354,39 @@ def getResult(base_sequence,outdir,similarity,show_hor_number,show_hor_min_repea
         os.mkdir(outdir_best)
 
     similarity = similarity
-    pattern_file = outdir + '/out_final_hor'+similarity+'.xls'
-    cluster_file = outdir + '/out_cluster_'+similarity+'.xls'
-    monomer_sequence_file = outdir + '/out_monomer_seq.xls'
+    pattern_file = outdir + '/out_final_hor' + similarity + '.xls'  # 存在更新
+    cluster_file = outdir + '/out_cluster_' + similarity + '.xls'
+    monomer_sequence_file = outdir + '/out_monomer_seq_' + similarity + '.xls'
     block_sequence_file = outdir + '/out_block.sequences'
-    pattern_repeat_file = outdir + '/hor.repeatnumber.xls'
+    pattern_repeat_file = outdir_best + '/hor.repeatnumber.xls'
 
-    patterns = readPattern(pattern_file)
+    patterns = readPattern(pattern_file)  # 更新增加strand [start,end,strand,pattern,repeat_number]
     monomer_sequence = readMonomerSequence(monomer_sequence_file, similarity)
     block_sequence = readBlockSequence(block_sequence_file)
-
 
     pattern_static = {}
     pattern_index = 1
 
-    pattern_repeat_file = open(pattern_repeat_file,'w')
+    pattern_repeat_file = open(pattern_repeat_file, 'w')
     pattern_repeat_file.write('HORs\tRepeatNumber\n')
 
     for i in patterns.keys():
         pattern = i.split('_')
-        database = patterns[i]
+        database = patterns[i]  # 增加了strand
         repeat_number = 0
         for j in database:
-            repeat_number += j[3]
-        pattern_name = 'R'+str(pattern_index) + 'L' + str(len(pattern))
-        pattern_repeat_file.write(pattern_name+'\t'+str(repeat_number) + '\n')
-        pattern_static[i] = [pattern_name,repeat_number]
+            repeat_number += j[4]
+        pattern_name = 'R' + str(pattern_index) + 'L' + str(len(pattern))
+        pattern_repeat_file.write(pattern_name + '\t' + str(repeat_number) + '\n')
+        pattern_static[i] = [pattern_name, repeat_number]
         pattern_index += 1
     pattern_repeat_file.close()
     Plot(monomer_sequence, patterns, pattern_static, block_sequence, outdir_best,
-         show_number=show_hor_number,show_min_repeat_number=show_hor_min_repeat_number)
+         show_number=show_hor_number, show_min_repeat_number=show_hor_min_repeat_number)
 
     monomer_table = readCluster(cluster_file)
     buildMonomerFile(monomer_table, base_sequence, outdir_best)
-    buildHORFile(patterns, pattern_static,base_sequence,monomer_sequence,block_sequence,outdir_best)
+    buildHORFile(patterns, pattern_static, base_sequence, monomer_sequence, block_sequence, outdir_best)
 
     top_layer_file = outdir + '/out_top_layer' + similarity + '.xls'
     all_layer_file = outdir + '/out_all_layer' + similarity + '.xls'
@@ -348,7 +401,11 @@ def getResult(base_sequence,outdir,similarity,show_hor_number,show_hor_min_repea
         end = int(i[1])
         repeat_number = i[2]
         pattern = i[3].split('_')
+        start_block = block_sequence[start]
+        strand = start_block[-1]
         in_flag = 0
+        if strand == '-':
+            pattern = pattern[::-1]
         for j in range(len(pattern)):
             prefix_pattern = pattern[j:]
             suffix_pattern = pattern[:j]
@@ -360,10 +417,12 @@ def getResult(base_sequence,outdir,similarity,show_hor_number,show_hor_min_repea
             if s_loop_pattern in pattern_static.keys():
                 new_top_layer.append([start, end, repeat_number, i[3], pattern_static[s_loop_pattern][0]])
                 break
-    out_top_layer_file = outdir + '/out/out_top_layer.xls'
+    out_top_layer_file = outdir_best + '/out_top_layer.xls'
     out_top_layer_file = open(out_top_layer_file, 'w')
     for i in new_top_layer:
-        out_top_layer_file.write(i[4] + '\t' + str(block_sequence[i[0]][0]) + '\t' + str(block_sequence[i[1]][1]) + '\t' + i[2] + '\t' + i[3] + '\n')
+        out_top_layer_file.write(
+            i[4] + '\t' + str(block_sequence[i[0]][0]) + '\t' + str(block_sequence[i[1]][1]) + '\t' + i[2] + '\t' + i[
+                3] + '\n')
     out_top_layer_file.close()
 
     new_all_layer = []
@@ -372,8 +431,12 @@ def getResult(base_sequence,outdir,similarity,show_hor_number,show_hor_min_repea
         end = int(i[1])
         repeat_number = i[2]
         pattern = i[3].split('_')
+        start_block = block_sequence[start]
+        strand = start_block[-1]
         type = i[4]
         in_flag = 0
+        if strand == '-':
+            pattern = pattern[::-1]
         for j in range(len(pattern)):
             prefix_pattern = pattern[j:]
             suffix_pattern = pattern[:j]
@@ -385,10 +448,12 @@ def getResult(base_sequence,outdir,similarity,show_hor_number,show_hor_min_repea
             if s_loop_pattern in pattern_static.keys():
                 new_all_layer.append([start, end, repeat_number, i[3], pattern_static[s_loop_pattern][0], type])
                 break
-    out_all_layer_file = outdir + '/out/out_all_layer.xls'
+    out_all_layer_file = outdir_best + '/out_all_layer.xls'
     out_all_layer_file = open(out_all_layer_file, 'w')
     for i in new_all_layer:
-        out_all_layer_file.write(i[4] + '\t' + str(block_sequence[i[0]][0]) + '\t' + str(block_sequence[i[1]][1]) + '\t' + i[2] + '\t' + i[3] + '\t' + i[5] + '\n')
+        out_all_layer_file.write(
+            i[4] + '\t' + str(block_sequence[i[0]][0]) + '\t' + str(block_sequence[i[1]][1]) + '\t' + i[2] + '\t' + i[
+                3] + '\t' + i[5] + '\n')
     out_all_layer_file.close()
 
 
@@ -407,10 +472,6 @@ def main():
     show_hor_number = args.show_hor_number
     show_hor_min_repeat_number = args.show_hor_min_repeat_number
 
-    # result_dir = 'G:/PGTD/SCAT_community/HiCAT0623/human/1'
-    # similarity = '0'
-    # show_hor_number = 5
-    # show_hor_min_repeat_number = 10
 
     base_sequence_path = result_dir + '/' + 'input_fasta.1.fa'
 
